@@ -20,7 +20,9 @@ vi.mock('../src/lib/logger', () => ({
 
 const requireCore = createRequire(resolve(__dirname, '../../core/package.json'))
 const workerEntry = resolve(requireCore.resolve('linkedom/package.json'), '../worker.js')
-const { parseHTML } = await import(pathToFileURL(workerEntry).href)
+// 绕过 Vite 对非 ASCII 绝对路径的二次解析，交给 Node 原生 ESM loader 处理 file URL。
+const importNative = new Function('specifier', 'return import(specifier)') as (specifier: string) => Promise<typeof import('linkedom/worker')>
+const { parseHTML } = await importNative(pathToFileURL(workerEntry).href)
 
 describe('文章提取到平台预处理的代码语言保真', () => {
   beforeEach(() => {
