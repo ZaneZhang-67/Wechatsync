@@ -46,6 +46,8 @@ export interface ImageProcessOptions {
   skipPatterns?: string[]
   /** 进度回调 */
   onProgress?: (current: number, total: number) => void
+  /** 任一图片上传失败时终止发布，避免保存包含失效外链的草稿 */
+  throwOnError?: boolean
 }
 
 /**
@@ -230,7 +232,7 @@ export abstract class CodeAdapter implements PlatformAdapter {
     uploadFn: (src: string) => Promise<ImageUploadResult>,
     options?: ImageProcessOptions
   ): Promise<string> {
-    const { skipPatterns = [], onProgress } = options || {}
+    const { skipPatterns = [], onProgress, throwOnError = false } = options || {}
 
     // 提取所有图片（HTML + Markdown）
     const matches: { full: string; src: string; alt?: string; type: 'html' | 'markdown' }[] = []
@@ -308,7 +310,10 @@ export abstract class CodeAdapter implements PlatformAdapter {
         logger.debug(`Image uploaded: ${uploadResult.url}`)
       } catch (error) {
         logger.error(`Failed to upload image: ${src}`, error)
-        // 继续处理其他图片
+        if (throwOnError) {
+          throw new Error(`图片上传失败（${src}）：${(error as Error).message}`)
+        }
+        // 默认兼容旧适配器：继续处理其他图片
       }
 
       // 避免请求过快
