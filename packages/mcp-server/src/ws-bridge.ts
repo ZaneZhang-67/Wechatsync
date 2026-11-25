@@ -498,7 +498,8 @@ export class ExtensionBridge {
    */
   private handleMessage(data: string): void {
     try {
-      const message: ResponseMessage = JSON.parse(data)
+      const message = JSON.parse(data) as ResponseMessage & { type?: string }
+      if (message.type === 'keepalive') return
 
       const pending = this.pendingRequests.get(message.id)
       if (!pending) {

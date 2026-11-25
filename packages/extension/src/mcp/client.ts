@@ -44,6 +44,8 @@ const DEFAULT_SERVER_URL = 'ws://localhost:9527'
 class McpClient {
   private ws: WebSocket | null = null
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null
+  private readonly HEARTBEAT_INTERVAL = 20000
   private serverUrl = DEFAULT_SERVER_URL
 
   // 安全验证 token
@@ -117,6 +119,7 @@ class McpClient {
       }
       this.ws = null
     }
+    this.stopHeartbeat()
 
     logger.debug(`Connecting to ${this.serverUrl} (attempt ${this.reconnectAttempts + 1})`)
 
@@ -131,6 +134,7 @@ class McpClient {
           clearTimeout(this.reconnectTimer)
           this.reconnectTimer = null
         }
+        this.startHeartbeat()
       }
 
       this.ws.onmessage = (event) => {
@@ -139,6 +143,7 @@ class McpClient {
 
       this.ws.onclose = (event) => {
         logger.debug(`Disconnected (code: ${event.code}), scheduling reconnect...`)
+        this.stopHeartbeat()
         this.ws = null
         this.scheduleReconnect()
       }
@@ -159,6 +164,7 @@ class McpClient {
    */
   disconnect(): void {
     this.reconnectAttempts = this.maxReconnectAttempts // 防止自动重连
+    this.stopHeartbeat()
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer)
       this.reconnectTimer = null
@@ -167,6 +173,26 @@ class McpClient {
       this.ws.onclose = null // 防止触发重连
       this.ws.close()
       this.ws = null
+    }
+  }
+
+  /**
+   * Chrome MV3 会在空闲约 30 秒后终止 Service Worker。
+   * 每 20 秒发送应用层心跳，确保 MCP WebSocket 和后台进程持续存活。
+   */
+  private startHeartbeat(): void {
+    this.stopHeartbeat()
+    this.heartbeatTimer = setInterval(() => {
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ type: 'keepalive', timestamp: Date.now() }))
+      }
+    }, this.HEARTBEAT_INTERVAL)
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer)
+      this.heartbeatTimer = null
     }
   }
 
